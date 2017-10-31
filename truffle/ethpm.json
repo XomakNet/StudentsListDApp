@@ -1,0 +1,16 @@
+{
+  "package_name": "StudentsAttendance",
+  "version": "0.0.3",
+  "description": "Simple contract to add two numbers",
+  "authors": [
+    "Konstantin Danilov <register@xomak.net>"
+  ],
+  "keywords": [
+    "ethereum",
+    "addition"
+  ],
+  "dependencies": {
+    "tokens": "^0.0.1"
+  },
+  "license": "MIT"
+}
