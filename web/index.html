@@ -24,6 +24,16 @@
 <div class="container">
     <div class="lg-2"></div>
     <div class="lg-8">
+        <h1>Students demo app</h1>
+        <div class="py-2">
+            <form class="form-inline" id="studentRegisterForm">
+                <div class="form-group mx-sm-4">
+                    <label for="studentNameInput" class="sr-only">New user</label>
+                    <input type="text" class="form-control" id="studentNameInput" placeholder="Student name" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Register</button>
+            </form>
+        </div>
         <table class="table" id="students">
             <thead>
             <tr>
@@ -32,6 +42,17 @@
             </tr>
             </thead>
         </table>
+        <div class="py-2">
+            <form class="form-inline" id="studentTransferForm">
+                <div class="form-group mx-sm-4">
+                    <label for="amountTransferInput">Add</label>
+                    <input type="number" class="form-control student-name" id="amountTransferInput" placeholder="amount">
+                    <label for="studentNameTransferInput">to</label>
+                    <input type="text" class="form-control transfer-amount" id="studentNameTransferInput" placeholder="student name" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Transfer</button>
+            </form>
+        </div>
     </div>
     <div class="lg-2"></div>
 </div>

@@ -1,4 +1,4 @@
-window.addEventListener('load', function() {
+window.addEventListener('load', function () {
 
     // Checking if Web3 has been injected by the browser (Mist/MetaMask)
     if (typeof web3 !== 'undefined') {
@@ -18,24 +18,24 @@ window.addEventListener('load', function() {
 
 });
 
-var EthereumConnector = function(web3, visualiser, contractsPath, networkId) {
+var EthereumConnector = function (web3, visualiser, contractsPath, networkId) {
 
     var tokens;
     var students;
     var addresses = {};
 
-    var getStringFromHex = function(hex) {
+    var getStringFromHex = function (hex) {
         return web3.toAscii(hex).replace(/\0/g, '');
     };
 
-    var getContract = function(name, networkId) {
+    var getContract = function (name, networkId) {
         var url = contractsPath + name + ".json";
-        return new Promise(function(resolve, reject) {
+        return new Promise(function (resolve, reject) {
             $.ajax(url, {
                 dataType: "json",
                 data: null,
                 error: reject,
-                success: function(data) {
+                success: function (data) {
                     //console.log(data);
                     var factory = web3.eth.contract(data.abi);
                     var address = data.networks[networkId].address;
@@ -46,75 +46,152 @@ var EthereumConnector = function(web3, visualiser, contractsPath, networkId) {
         });
     };
 
-    var getContracts = function(networkId) {
-        var tokensPromise = getContract("HumanStandardToken", networkId);
-
-        var studentsPromise = getContract("StudentsRegistry", networkId);
-        studentsPromise.then(function(studentsContract) {
-            students = studentsContract;
-            getStudents();
-            tokensPromise.then(function (tokensContract) {
-                tokens = tokensContract;
-                setTimeout(watchForBalances, 1000);
-            });
-        });
-
+    var getAccount = function () {
+        var currentAccount = web3.eth.accounts[0];
+        if (currentAccount) {
+            return currentAccount;
+        }
+        else {
+            alert("Account is not selected in metamask.");
+            return null;
+        }
     };
 
-    var getBalanceOf = function(address) {
-        return new Promise(function(resolve, reject) {
+    var _onNewStudentCommand = function (student) {
+        getNameByAddress(getAccount()).then(function (currentName) {
+            if (currentName.length === 0) {
+                newStudent(student);
+            }
+            else {
+                alert("Вы уже зарегистрированы.");
+            }
+        });
+    };
+
+    var init = function (networkId) {
+        var tokensPromise = getContract("HumanStandardToken", networkId);
+        var studentsPromise = getContract("StudentsRegistry", networkId);
+        studentsPromise.then(function (studentsContract) {
+            students = studentsContract;
+            watchForStudents();
+            tokensPromise.then(function (tokensContract) {
+                tokens = tokensContract;
+                watchForBalances();
+            });
+        });
+        visualiser.onNewStudent(_onNewStudentCommand);
+        //visualiser.onTransfer();
+    };
+
+    var getBalanceOf = function (address) {
+        return new Promise(function (resolve, reject) {
             tokens.balanceOf.call(address, function (error, result) {
                 resolve(result.c[0]);
             })
         });
     };
 
-    var getStudents = function() {
-        var registeredEvent = students.StudentRegistered({}, { fromBlock: 0, toBlock: 'latest' });
-        registeredEvent.get(function (error, logs) {
-            for(var log of logs) {
-                var args = log.args;
-                var name = getStringFromHex(args.name);
-                var addr = args.addr.toString();
-                getBalanceOf(addr).then(function(balance) {
-                    addresses[addr] = visualiser.addStudent(name, balance-2)
-                });
-            }
-        });
-        registeredEvent.watch();
+    var _onStudentRegistered = function (error, log) {
+        if (!(addr in addresses)) {
+            var args = log.args;
+            var name = getStringFromHex(args.name);
+            var addr = args.addr.toString();
+            getBalanceOf(addr).then(function (balance) {
+                addresses[addr] = visualiser.addStudent(name, balance);
+            });
+        }
     };
 
-    var watchForBalances = function() {
-        var transferEvent = tokens.Transfer({}, { fromBlock: 0, toBlock: 'latest' });
-        transferEvent.get(function (error, logs) {
-            for(var log of logs) {
-                var addr = log.args._to.toString();
-                console.log(addr, addresses, addr in addresses);
-                if(addr in addresses) {
-                    console.log("Get balance of");
-                    getBalanceOf(addr).then(function(balance) {
-                        addresses[addr].changeBalance(balance);
-                        console.log(addr, balance);
-                    });
+    var getNameByAddress = function (address) {
+        return new Promise(function (resolve, reject) {
+            console.log(address);
+            students.names.call(address, function (error, result) {
+                resolve(getStringFromHex(result));
+            })
+        });
+    };
+
+    var watchForStudents = function () {
+        var registeredEvent = students.StudentRegistered(null, {fromBlock: 0, toBlock: 'latest'});
+        registeredEvent.watch(_onStudentRegistered);
+    };
+
+    var getBalanceAndUpdate = function (address) {
+        getBalanceOf(address).then(function (balance) {
+            console.log(address, balance);
+            addresses[address].changeBalance(balance);
+        });
+    };
+
+    var _onBalanceUpdate = function (error, log) {
+        console.log(log);
+        var transactionAddresses = [log.args._to, log.args._from];
+        for (var currentAddress of transactionAddresses) {
+            currentAddress = currentAddress.toString();
+            console.log(currentAddress);
+            if (currentAddress in addresses) {
+                getBalanceAndUpdate(currentAddress);
+            }
+        }
+
+    };
+
+    var watchForBalances = function () {
+        var transferEvent = tokens.Transfer({}, {fromBlock: 0, toBlock: 'latest'});
+        transferEvent.watch(_onBalanceUpdate);
+    };
+
+    var newStudent = function (name) {
+        return new Promise(function (resolve, reject) {
+            students.registerStudent.sendTransaction(name, function (error, result) {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(result);
                 }
-            }
-            console.log(logs);
+            });
         });
-        transferEvent.watch();
     };
 
-    var makePayment = function(amount, to) {
-        //tokens.
+    var makePayment = function (to, amount) {
+        return new Promise(function (resolve, reject) {
+            tokens.transfer.transact(to, amount, function (error, result) {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(result);
+                }
+            });
+        });
+
     };
 
-    getContracts(networkId);
+    init(networkId);
 };
 
-var PageMaintainer = function() {
+var PageMaintainer = function () {
     var table = $("#students");
+    var newStudentForm = $("#studentRegisterForm");
+    var studentTransferForm = $("#studentTransferForm");
 
     var that = {
-        addStudent: function(name, balance) {
+        onNewStudent: function (callback) {
+            newStudentForm.submit(function () {
+                var studentsName = newStudentForm.find("input[type=text]").val();
+                callback.call(newStudentForm, studentsName);
+                return false;
+            });
+        },
+
+        onTransfer: function (callback) {
+            studentTransferForm.find("button").click(function () {
+                var studentsName = newStudentForm.find("input.student-name").val();
+                var transferAmount = newStudentForm.find("input.transfer-amount").val();
+                callback.call(studentTransferForm, studentsName, transferAmount);
+            });
+        },
+
+        addStudent: function (name, balance) {
             var row = $("<tr></tr>");
             var nameTd = $("<td></td>");
             var balanceTd = $("<td></td>");
@@ -125,7 +202,7 @@ var PageMaintainer = function() {
             table.append(row);
 
             return {
-                changeBalance: function(balance) {
+                changeBalance: function (balance) {
                     balanceTd.text(balance);
                 }
             }
